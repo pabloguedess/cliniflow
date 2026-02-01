@@ -1,0 +1,151 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  users          User[]
+  patients       Patient[]
+  professionals  Professional[]
+  appointments   Appointment[]
+  medicalRecords MedicalRecord[]
+  subscriptions  Subscription[]
+
+  @@map("tenants")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  tenantId  String
+  email     String   @unique
+  password  String
+  role      String   @default("admin")
+  createdAt DateTime @default(now())
+    avatarKey        String   @default("avatar_1")
+  pendingEmail     String?
+  emailCodeHash    String?
+  passCodeHash     String?
+  codeExpiresAt    DateTime?
+
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("users")
+}
+
+model Patient {
+  id        String    @id @default(uuid())
+  tenantId  String
+  name      String
+  cpf       String?
+  rg        String?
+  birthDate DateTime?
+  gender    String?
+  phone     String?
+  email     String?
+  address   String?
+  notes     String?
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  tenant       Tenant          @relation(fields: [tenantId], references: [id])
+  appointments Appointment[]
+  records      MedicalRecord[]
+
+  @@map("patients")
+}
+
+model Professional {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  role      String
+  specialty String?
+  crm       String?
+  phone     String?
+  email     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  appointments Appointment[]
+
+  @@map("professionals")
+}
+
+model Appointment {
+  id             String   @id @default(uuid())
+  tenantId       String
+  patientId      String
+  professionalId String?
+  date           DateTime
+  status         String   @default("scheduled")
+  type           String
+  notes          String?
+  createdAt      DateTime @default(now())
+
+  tenant       Tenant          @relation(fields: [tenantId], references: [id])
+  patient      Patient         @relation(fields: [patientId], references: [id])
+  professional Professional?   @relation(fields: [professionalId], references: [id])
+  records      MedicalRecord[]
+
+  @@map("appointments")
+}
+
+model MedicalRecord {
+  id            String   @id @default(uuid())
+  tenantId      String
+  patientId     String
+  appointmentId String?
+  complaint     String?
+  diagnosis     String?
+  prescription  String?
+  observations  String?
+  createdAt     DateTime @default(now())
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  patient     Patient      @relation(fields: [patientId], references: [id])
+  appointment Appointment? @relation(fields: [appointmentId], references: [id])
+
+  @@map("medical_records")
+}
+
+model Subscription {
+  id        String    @id @default(uuid())
+  tenantId  String
+  plan      String
+  type      String
+  status    String
+  expiresAt DateTime?
+  gateway   String    @default("asaas")
+  gatewayId String?
+  createdAt DateTime  @default(now())
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  payments Payment[]
+
+  @@map("subscriptions")
+}
+
+model Payment {
+  id               String   @id @default(uuid())
+  subscriptionId   String
+  amount           Float
+  method           String
+  status           String
+  gatewayPaymentId String?
+  createdAt        DateTime @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+
+  @@map("payments")
+}
