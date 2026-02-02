@@ -62,12 +62,17 @@ export default async function PatientsPage({
     ]
   }
 
+  // ✅ filtro por CONSULTA / AGENDAMENTO (Appointment.date)
   if (fromDT || toDT) {
-    where.createdAt = {
-      ...(fromDT ? { gte: fromDT } : {}),
-      ...(toDT ? { lte: toDT } : {}),
+    where.appointments = {
+      some: {
+        ...(fromDT ? { date: { gte: fromDT } } : {}),
+        ...(toDT ? { date: { lte: toDT } } : {}),
+      },
     }
   }
+
+  const now = new Date()
 
   const [total, patients] = await Promise.all([
     prisma.patient.count({ where }),
@@ -81,8 +86,20 @@ export default async function PatientsPage({
         name: true,
         phone: true,
         email: true,
-        createdAt: true,
         active: true,
+        createdAt: true,
+        // Próxima consulta (se existir)
+        appointments: {
+          where: { date: { gte: now } },
+          orderBy: { date: 'asc' },
+          take: 1,
+          select: {
+            id: true,
+            date: true,
+            type: true,
+            status: true,
+          },
+        },
       },
     }),
   ])
@@ -124,6 +141,9 @@ export default async function PatientsPage({
           <Link className="btn" href="/patients/new">
             + Novo paciente
           </Link>
+          <Link className="btn" href="/appointments/new">
+            + Novo agendamento
+          </Link>
         </div>
       </div>
 
@@ -156,14 +176,14 @@ export default async function PatientsPage({
             defaultValue={searchParams.from ?? ''}
             className="input"
             type="date"
-            title="Data inicial"
+            title="Data inicial (consulta)"
           />
           <input
             name="fromTime"
             defaultValue={searchParams.fromTime ?? ''}
             className="input"
             type="time"
-            title="Hora inicial"
+            title="Hora inicial (consulta)"
           />
 
           <input
@@ -171,14 +191,14 @@ export default async function PatientsPage({
             defaultValue={searchParams.to ?? ''}
             className="input"
             type="date"
-            title="Data final"
+            title="Data final (consulta)"
           />
           <input
             name="toTime"
             defaultValue={searchParams.toTime ?? ''}
             className="input"
             type="time"
-            title="Hora final"
+            title="Hora final (consulta)"
           />
 
           <button className="btn" type="submit">
@@ -188,7 +208,7 @@ export default async function PatientsPage({
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="muted" style={{ fontSize: 12 }}>
-            * Filtro por data/hora do cadastro do paciente (createdAt).
+            * Filtro baseado na <b>data/hora da consulta</b> (agendamentos).
           </div>
 
           <Link className="btn" href="/patients">
@@ -199,11 +219,10 @@ export default async function PatientsPage({
 
       {/* Lista */}
       <div className="card" style={{ marginTop: 12, overflow: 'hidden' }}>
-        {/* Cabeçalho */}
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '1.3fr 1fr 1fr 0.9fr',
+            gridTemplateColumns: '1.2fr 1fr 1fr 1.2fr 1fr',
             gap: 10,
             padding: 12,
             borderBottom: '1px solid rgba(255,255,255,.10)',
@@ -213,6 +232,7 @@ export default async function PatientsPage({
           <div style={{ fontWeight: 900 }}>Paciente</div>
           <div style={{ fontWeight: 900 }}>Telefone</div>
           <div style={{ fontWeight: 900 }}>E-mail</div>
+          <div style={{ fontWeight: 900 }}>Próxima consulta</div>
           <div style={{ fontWeight: 900, textAlign: 'right' }}>Ações</div>
         </div>
 
@@ -220,59 +240,70 @@ export default async function PatientsPage({
           <div style={{ padding: 18 }}>
             <div style={{ fontWeight: 900, fontSize: 16 }}>Nenhum paciente encontrado</div>
             <div className="muted" style={{ marginTop: 6 }}>
-              Tente ajustar os filtros ou crie um novo paciente.
+              Tente ajustar os filtros ou crie um novo paciente/agendamento.
             </div>
 
-            <div style={{ marginTop: 12 }}>
+            <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
               <Link className="btn" href="/patients/new">+ Novo paciente</Link>
+              <Link className="btn" href="/appointments/new">+ Novo agendamento</Link>
             </div>
           </div>
         ) : (
-          patients.map((p) => (
-            <div
-              key={p.id}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1.3fr 1fr 1fr 0.9fr',
-                gap: 10,
-                padding: 12,
-                borderBottom: '1px solid rgba(255,255,255,.06)',
-                alignItems: 'center',
-              }}
-            >
-              <div style={{ display: 'grid', gap: 4 }}>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <div style={{ fontWeight: 900 }}>{p.name}</div>
+          patients.map((p) => {
+            const nextAppt = p.appointments?.[0]
+            return (
+              <div
+                key={p.id}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1.2fr 1fr 1fr 1.2fr 1fr',
+                  gap: 10,
+                  padding: 12,
+                  borderBottom: '1px solid rgba(255,255,255,.06)',
+                  alignItems: 'center',
+                }}
+              >
+                <div style={{ display: 'grid', gap: 4 }}>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <div style={{ fontWeight: 900 }}>{p.name}</div>
 
-                  <span
-                    style={{
-                      fontSize: 12,
-                      padding: '3px 8px',
-                      borderRadius: 999,
-                      border: '1px solid rgba(255,255,255,.12)',
-                      opacity: p.active ? 0.95 : 0.6,
-                    }}
-                  >
-                    {p.active ? 'Ativo' : 'Inativo'}
-                  </span>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        padding: '3px 8px',
+                        borderRadius: 999,
+                        border: '1px solid rgba(255,255,255,.12)',
+                        opacity: p.active ? 0.95 : 0.6,
+                      }}
+                    >
+                      {p.active ? 'Ativo' : 'Inativo'}
+                    </span>
+                  </div>
+
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    Criado em {new Date(p.createdAt).toLocaleString('pt-BR')}
+                  </div>
                 </div>
 
-                <div className="muted" style={{ fontSize: 12 }}>
-                  Criado em {new Date(p.createdAt).toLocaleString('pt-BR')}
+                <div className="muted">{p.phone ?? '—'}</div>
+                <div className="muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {p.email ?? '—'}
+                </div>
+
+                <div className="muted" style={{ fontSize: 13 }}>
+                  {nextAppt
+                    ? `${new Date(nextAppt.date).toLocaleString('pt-BR')} • ${nextAppt.type ?? 'consulta'}`
+                    : '—'}
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <Link className="btn" href={`/appointments/new?patientId=${p.id}`}>Agendar</Link>
+                  <Link className="btn" href={`/patients/${p.id}`}>Abrir</Link>
+                  <Link className="btn" href={`/patients/${p.id}/records`}>Prontuário</Link>
                 </div>
               </div>
-
-              <div className="muted">{p.phone ?? '—'}</div>
-              <div className="muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {p.email ?? '—'}
-              </div>
-
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <Link className="btn" href={`/patients/${p.id}`}>Abrir</Link>
-                <Link className="btn" href={`/patients/${p.id}/records`}>Prontuário</Link>
-              </div>
-            </div>
-          ))
+            )
+          })
         )}
       </div>
 
