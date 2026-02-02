@@ -2,144 +2,101 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { PatientSearchSelect } from '@/components/PatientSearchSelect'
 
 type Patient = { id: string; name: string }
 
-export default function NewAppointmentForm({
-  fixedPatient,
+export default function AppointmentForm({
   patients,
+  lockedPatient,
 }: {
-  fixedPatient: Patient | null
   patients: Patient[]
+  lockedPatient: Patient | null
 }) {
   const router = useRouter()
-
-  const [patientId, setPatientId] = useState(fixedPatient?.id ?? '')
-  const [dateTime, setDateTime] = useState('')
+  const [patientId, setPatientId] = useState<string>(lockedPatient?.id || '')
+  const [date, setDate] = useState('')
   const [type, setType] = useState('Consulta')
   const [notes, setNotes] = useState('')
-  const [loading, setLoading] = useState(false)
+  const selectedName = useMemo(() => {
+    return lockedPatient?.name || patients.find((p) => p.id === patientId)?.name || ''
+  }, [lockedPatient, patients, patientId])
 
-  const patientLabel = useMemo(() => {
-    if (fixedPatient) return fixedPatient.name
-    const p = patients.find(x => x.id === patientId)
-    return p?.name ?? ''
-  }, [fixedPatient, patients, patientId])
+  async function onSave() {
+    if (!patientId) return alert('Selecione um paciente.')
+    if (!date) return alert('Informe data e horário.')
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault()
+    const res = await fetch('/api/appointments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        patientId,
+        date,
+        type,
+        notes,
+      }),
+    })
 
-    if (!patientId) {
-      alert('Selecione o paciente.')
-      return
-    }
-    if (!dateTime) {
-      alert('Informe data e horário.')
-      return
-    }
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) return alert(data?.message || 'Erro ao salvar agendamento')
 
-    setLoading(true)
-    try {
-      const res = await fetch('/api/appointments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          patientId,
-          date: dateTime,
-          type,
-          notes,
-        }),
-      })
-
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.message || 'Erro ao salvar agendamento')
-
-      // volta para o paciente certo
-      router.push(`/patients/${patientId}`)
-      router.refresh()
-    } catch (err: any) {
-      alert(err?.message || 'Erro')
-    } finally {
-      setLoading(false)
-    }
+    // volta para o paciente
+    router.push(`/patients/${patientId}`)
   }
 
   return (
-    <form onSubmit={onSubmit} style={{ display: 'grid', gap: 12 }}>
-      <div style={{ display: 'grid', gap: 6 }}>
-        <label className="muted" style={{ fontSize: 12 }}>Paciente</label>
+    <div className="card" style={{ padding: 18 }}>
+      <div style={{ display: 'grid', gap: 14 }}>
+        <div>
+          <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Paciente</div>
 
-        {fixedPatient ? (
-          <div className="card" style={{ padding: 12 }}>
-            <div style={{ fontWeight: 800 }}>{fixedPatient.name}</div>
-            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-              ID: {fixedPatient.id}
-            </div>
-            <input type="hidden" value={patientId} />
+          {lockedPatient ? (
+            <input value={selectedName} readOnly />
+          ) : (
+            <PatientSearchSelect
+              patients={patients}
+              value={patientId}
+              onChange={(id) => setPatientId(id)}
+              placeholder="Digite o nome do paciente…"
+            />
+          )}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 260px', gap: 12 }}>
+          <div>
+            <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Data e horário</div>
+            <input
+              type="datetime-local"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
           </div>
-        ) : (
-          <select className="input" value={patientId} onChange={(e) => setPatientId(e.target.value)}>
-            <option value="">Selecione</option>
-            {patients.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-        )}
-      </div>
+          <div>
+            <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Tipo</div>
+            <select value={type} onChange={(e) => setType(e.target.value)}>
+              <option>Consulta</option>
+              <option>Retorno</option>
+              <option>Exame</option>
+              <option>Procedimento</option>
+            </select>
+          </div>
+        </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 260px', gap: 12 }}>
-        <div style={{ display: 'grid', gap: 6 }}>
-          <label className="muted" style={{ fontSize: 12 }}>Data e horário</label>
-          <input
-            className="input"
-            type="datetime-local"
-            value={dateTime}
-            onChange={(e) => setDateTime(e.target.value)}
+        <div>
+          <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Observações</div>
+          <textarea
+            rows={4}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Ex.: queixa principal, orientação, observações do atendimento..."
           />
         </div>
 
-        <div style={{ display: 'grid', gap: 6 }}>
-          <label className="muted" style={{ fontSize: 12 }}>Tipo</label>
-          <select className="input" value={type} onChange={(e) => setType(e.target.value)}>
-            <option>Consulta</option>
-            <option>Retorno</option>
-            <option>Exame</option>
-            <option>Procedimento</option>
-          </select>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button className="btn" onClick={onSave}>Salvar agendamento</button>
+          <button className="btn" onClick={() => router.back()}>Cancelar</button>
         </div>
       </div>
-
-      <div style={{ display: 'grid', gap: 6 }}>
-        <label className="muted" style={{ fontSize: 12 }}>Observações</label>
-        <textarea
-          className="input"
-          style={{ minHeight: 110, resize: 'vertical' }}
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Ex.: queixa principal, orientação, observações do atendimento..."
-        />
-      </div>
-
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <button className="btn" type="submit" disabled={loading}>
-          {loading ? 'Salvando...' : 'Salvar agendamento'}
-        </button>
-
-        <button
-          className="btn"
-          type="button"
-          onClick={() => router.push(fixedPatient ? `/patients/${fixedPatient.id}` : '/patients')}
-          disabled={loading}
-        >
-          Cancelar
-        </button>
-
-        {patientLabel ? (
-          <div className="muted" style={{ alignSelf: 'center' }}>
-            Agendando para: <b>{patientLabel}</b>
-          </div>
-        ) : null}
-      </div>
-    </form>
+    </div>
   )
 }

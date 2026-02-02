@@ -2,67 +2,58 @@ import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { verifySession } from '@/lib/session'
 import { prisma } from '@/lib/prisma'
-import NewAppointmentForm from './ui'
+import AppointmentForm from './ui'
 
 export const dynamic = 'force-dynamic'
 
 export default async function NewAppointmentPage({
   searchParams,
 }: {
-  searchParams: Record<string, string | string[] | undefined>
+  searchParams: Promise<{ patientId?: string }>
 }) {
+  const sp = await searchParams
+
   const cookieStore = await cookies()
   const sessionCookie = cookieStore.get('cliniflow_session')?.value
   const session = verifySession(sessionCookie)
 
-  if (!session) {
-    return (
-      <div className="container" style={{ paddingTop: 30 }}>
-        <div className="card" style={{ padding: 18 }}>
-          Não autorizado. <Link className="btn" href="/login" style={{ marginLeft: 10 }}>Ir para login</Link>
-        </div>
-      </div>
-    )
-  }
+  if (!session) return <div className="container">Não autorizado</div>
 
-  const patientIdRaw = searchParams?.patientId
-  const patientId = Array.isArray(patientIdRaw) ? patientIdRaw[0] : patientIdRaw
+  const patients = await prisma.patient.findMany({
+    where: { tenantId: session.tenantId, active: true },
+    select: { id: true, name: true },
+    orderBy: { createdAt: 'desc' },
+  })
 
-  // Se veio patientId, buscamos só ele
-  const fixedPatient = patientId
+  const preselectedId = sp.patientId || ''
+  const preselected = preselectedId
     ? await prisma.patient.findFirst({
-        where: { id: patientId, tenantId: session.tenantId },
+        where: { id: preselectedId, tenantId: session.tenantId, active: true },
         select: { id: true, name: true },
       })
     : null
 
-  // Se não veio patientId, listamos pacientes para dropdown
-  const patients = !patientId
-    ? await prisma.patient.findMany({
-        where: { tenantId: session.tenantId, active: true },
-        orderBy: { createdAt: 'desc' },
-        select: { id: true, name: true },
-      })
-    : []
-
   return (
-    <div style={{ paddingTop: 18 }}>
+    <div className="container">
       <div className="card" style={{ padding: 18 }}>
-        <div style={{ fontWeight: 900, fontSize: 22 }}>Novo agendamento</div>
+        <div style={{ fontSize: 26, fontWeight: 900 }}>Novo agendamento</div>
         <div className="muted" style={{ marginTop: 6 }}>
-          Informe data/horário e tipo. O paciente {fixedPatient ? 'já está selecionado.' : 'pode ser escolhido abaixo.'}
+          Informe data/horário e tipo.
+          {preselected ? ' O paciente já está definido.' : ' Busque o paciente pelo nome.'}
         </div>
-        <div style={{ marginTop: 10 }}>
-          <Link className="btn" href={fixedPatient ? `/patients/${fixedPatient.id}` : '/patients'}>Voltar</Link>
+        <div style={{ marginTop: 12 }}>
+          <Link className="btn" href={preselected ? `/patients/${preselected.id}` : '/appointments'}>
+            Voltar
+          </Link>
         </div>
       </div>
 
-      <div className="card" style={{ marginTop: 12, padding: 18 }}>
-        <NewAppointmentForm
-          fixedPatient={fixedPatient ? { id: fixedPatient.id, name: fixedPatient.name } : null}
-          patients={patients.map(p => ({ id: p.id, name: p.name }))}
-        />
-      </div>
+      <div style={{ height: 14 }} />
+
+      <AppointmentForm
+        patients={patients}
+        lockedPatient={preselected ? { id: preselected.id, name: preselected.name } : null}
+      />
     </div>
   )
 }

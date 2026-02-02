@@ -17,6 +17,7 @@ html.light {
 }
 
 * { box-sizing: border-box; }
+
 body {
   margin: 0;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
@@ -27,7 +28,8 @@ body {
 }
 
 a { color: inherit; text-decoration: none; }
-button, input {
+
+button, input, select, textarea {
   font: inherit;
 }
 
@@ -46,6 +48,7 @@ button, input {
   backdrop-filter: blur(10px);
 }
 
+/* ✅ sua classe padrão */
 .input {
   width: 100%;
   padding: 12px 12px;
@@ -57,6 +60,35 @@ button, input {
 }
 
 .input::placeholder { color: var(--muted); }
+
+/* ✅ garantir que inputs/select/textarea "normais" fiquem iguais ao .input */
+input:not(.input),
+select:not(.input),
+textarea:not(.input) {
+  width: 100%;
+  padding: 12px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  outline: none;
+}
+
+input:not(.input)::placeholder,
+textarea:not(.input)::placeholder {
+  color: var(--muted);
+}
+
+/* ✅ FIX: dropdown legível no tema escuro/claro */
+select option {
+  background: #0f121a; /* escuro */
+  color: #ffffff;
+}
+
+html.light select option {
+  background: #ffffff; /* claro */
+  color: #111111;
+}
 
 .btn {
   padding: 12px 14px;
@@ -81,6 +113,7 @@ button, input {
 .row { display: flex; gap: 12px; align-items: center; }
 .grid { display: grid; gap: 12px; }
 
+/* ===== TOAST ===== */
 .toast-viewport{
   position: fixed;
   right: 16px;
@@ -138,4 +171,3 @@ button, input {
 
 .toast-info{ border-color: rgba(120,170,255,.25); }
 .toast-info .toast-dot{ background: rgba(120,170,255,.95); }
-
