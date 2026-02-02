@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server'
 import { cookies } from 'next/headers'
 import { verifySession } from '@/lib/session'
 import { prisma } from '@/lib/prisma'
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { getSupabaseAdmin } from '@/lib/supabaseAdmin'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,6 +15,9 @@ function safeName(name: string) {
 
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
+    const { client, error } = getSupabaseAdmin()
+    if (!client) return NextResponse.json({ message: error }, { status: 500 })
+
     const { id } = await ctx.params
 
     const cookieStore = await cookies()
@@ -30,22 +33,23 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 
     const prefix = `${session.tenantId}/${id}/`
 
-    const { data, error } = await supabaseAdmin.storage.from(BUCKET).list(prefix, {
+    const { data, error: listErr } = await client.storage.from(BUCKET).list(prefix, {
       limit: 100,
       sortBy: { column: 'created_at', order: 'desc' },
     })
-    if (error) throw error
+    if (listErr) throw listErr
 
     const files = (data || []).filter((x) => x.name && x.id)
 
-    // gera links assinados (válidos por 1h)
     const signed = await Promise.all(
       files.map(async (f) => {
         const path = `${prefix}${f.name}`
-        const { data: signedData, error: signedErr } = await supabaseAdmin.storage
+        const { data: signedData, error: signedErr } = await client.storage
           .from(BUCKET)
           .createSignedUrl(path, 60 * 60)
+
         if (signedErr) return null
+
         return {
           name: f.name,
           path,
@@ -65,6 +69,9 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
+    const { client, error } = getSupabaseAdmin()
+    if (!client) return NextResponse.json({ message: error }, { status: 500 })
+
     const { id } = await ctx.params
 
     const cookieStore = await cookies()
@@ -90,13 +97,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const path = `${session.tenantId}/${id}/${filename}`
     const bytes = new Uint8Array(await file.arrayBuffer())
 
-    const { error } = await supabaseAdmin.storage.from(BUCKET).upload(path, bytes, {
+    const { error: upErr } = await client.storage.from(BUCKET).upload(path, bytes, {
       contentType: file.type || 'application/octet-stream',
       upsert: false,
     })
-    if (error) throw error
+    if (upErr) throw upErr
 
-    const { data: signedData, error: signedErr } = await supabaseAdmin.storage
+    const { data: signedData, error: signedErr } = await client.storage
       .from(BUCKET)
       .createSignedUrl(path, 60 * 60)
 
