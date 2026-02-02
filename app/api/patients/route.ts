@@ -3,6 +3,40 @@ import { cookies } from 'next/headers'
 import { verifySession } from '@/lib/session'
 import { prisma } from '@/lib/prisma'
 
+export async function GET(req: Request) {
+  const cookieStore = await cookies()
+  const sessionCookie = cookieStore.get('cliniflow_session')?.value
+  const session = verifySession(sessionCookie)
+
+  if (!session) {
+    return NextResponse.json({ message: 'Não autorizado' }, { status: 401 })
+  }
+
+  const { searchParams } = new URL(req.url)
+  const search = (searchParams.get('search') || '').trim()
+
+  const where: any = { tenantId: session.tenantId, active: true }
+
+  if (search.length >= 1) {
+    where.name = { contains: search, mode: 'insensitive' }
+  }
+
+  const patients = await prisma.patient.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      name: true,
+      phone: true,
+      email: true,
+      createdAt: true,
+    },
+    take: 300,
+  })
+
+  return NextResponse.json({ patients })
+}
+
 export async function POST(req: Request) {
   const cookieStore = await cookies()
   const sessionCookie = cookieStore.get('cliniflow_session')?.value
