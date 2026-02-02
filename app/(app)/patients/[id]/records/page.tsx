@@ -22,6 +22,7 @@ export default async function PatientRecordsPage({
 
   const patientId = params.id
 
+  // ✅ SEMPRE busca pelo params.id + tenantId (nunca pega "primeiro paciente")
   const patient = await prisma.patient.findFirst({
     where: { id: patientId, tenantId: session.tenantId },
     select: { id: true, name: true },
@@ -75,20 +76,16 @@ export default async function PatientRecordsPage({
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 10 }}>
-          <Link className="btn" href={`/patients/${patient.id}`}>
-            Voltar para o paciente
-          </Link>
-          <Link className="btn" href="/patients">
-            Pacientes
-          </Link>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <Link className="btn" href={`/patients/${patient.id}`}>Voltar para o paciente</Link>
+          <Link className="btn" href="/patients">Pacientes</Link>
         </div>
       </div>
 
       <div className="card" style={{ marginTop: 12, padding: 18 }}>
         <div style={{ fontWeight: 900, fontSize: 16 }}>Registros clínicos</div>
         <div className="muted" style={{ marginTop: 6 }}>
-          (No próximo passo vamos criar o botão “+ Novo registro” e a tela de criação.)
+          (No próximo passo vamos criar “+ Novo registro” e “+ Anexar exame”.)
         </div>
 
         {records.length === 0 ? (
