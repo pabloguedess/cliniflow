@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { cookies } from 'next/headers'
 import { verifySession } from '@/lib/session'
 import { prisma } from '@/lib/prisma'
@@ -6,10 +7,12 @@ import { prisma } from '@/lib/prisma'
 export const dynamic = 'force-dynamic'
 
 export async function DELETE(
-  _req: Request,
-  { params }: { params: { id: string } }
+  _req: NextRequest,
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params
+
     const cookieStore = await cookies()
     const sessionCookie = cookieStore.get('cliniflow_session')?.value
     const session = verifySession(sessionCookie)
@@ -18,7 +21,6 @@ export async function DELETE(
       return NextResponse.json({ message: 'Não autorizado' }, { status: 401 })
     }
 
-    const id = params.id
     if (!id) {
       return NextResponse.json({ message: 'ID inválido' }, { status: 400 })
     }
