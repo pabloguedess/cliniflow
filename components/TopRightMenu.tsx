@@ -3,7 +3,11 @@
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 
-export function AvatarMenu({ avatarKey }: { avatarKey: string }) {
+export function TopRightMenu({
+  onLogout,
+}: {
+  onLogout: () => void
+}) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -16,33 +20,16 @@ export function AvatarMenu({ avatarKey }: { avatarKey: string }) {
     return () => document.removeEventListener('mousedown', onDoc)
   }, [])
 
-  async function logout() {
-    await fetch('/api/auth/logout', { method: 'POST' })
-    window.location.href = '/login'
-  }
-
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       <button
         type="button"
         className="btn"
         onClick={() => setOpen((v) => !v)}
-        style={{
-          width: 44,
-          height: 44,
-          borderRadius: 14,
-          display: 'grid',
-          placeItems: 'center',
-          padding: 0,
-        }}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        title="Conta"
+        style={{ display: 'flex', alignItems: 'center', gap: 10 }}
       >
-        {/* Avatar “emoji” simples por enquanto (você pode mapear avatarKey -> emoji) */}
-        <span style={{ fontSize: 18 }}>
-          {avatarKey === 'avatar_2' ? '🧑‍⚕️' : avatarKey === 'avatar_3' ? '👩‍⚕️' : '🙂'}
-        </span>
+        <span>🙂</span>
+        <span style={{ opacity: 0.85 }}>Conta</span>
       </button>
 
       {open ? (
@@ -56,23 +43,18 @@ export function AvatarMenu({ avatarKey }: { avatarKey: string }) {
             padding: 12,
             display: 'grid',
             gap: 10,
-            zIndex: 50,
           }}
         >
-          <div className="muted" style={{ fontSize: 12, padding: '2px 6px' }}>
-            Conta
-          </div>
-
           <Link className="btn" href="/account" onClick={() => setOpen(false)}>
             Minha conta
           </Link>
 
-          <button className="btn" onClick={logout}>
+          <button className="btn" onClick={() => { setOpen(false); onLogout() }}>
             Sair
           </button>
 
           <div className="muted" style={{ fontSize: 12 }}>
-            Dica: ajuste email/senha e plano em “Minha conta”.
+            Dica: ajuste e-mail/senha e plano em “Minha conta”.
           </div>
         </div>
       ) : null}

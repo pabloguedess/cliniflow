@@ -5,13 +5,22 @@ import { cookies } from 'next/headers'
 import { verifySession } from '@/lib/session'
 import { prisma } from '@/lib/prisma'
 
-export default async function AppLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  // ⚠️ cookies() é async no Next 16
   const cookieStore = await cookies()
   const sessionCookie = cookieStore.get('cliniflow_session')?.value
   const session = verifySession(sessionCookie)
 
   if (!session) {
-    return <div className="container">Não autorizado</div>
+    return (
+      <div className="container" style={{ paddingTop: 40 }}>
+        Não autorizado
+      </div>
+    )
   }
 
   const user = await prisma.user.findUnique({
@@ -20,36 +29,64 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   })
 
   return (
-    <div style={{ minHeight: '100vh' }}>
-      <header style={{ position: 'sticky', top: 0, zIndex: 5, padding: 16 }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      {/* HEADER */}
+      <header
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
+          padding: 16,
+        }}
+      >
         <div
           className="card"
           style={{
             padding: 12,
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
+            gap: 16,
           }}
         >
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          {/* ESQUERDA */}
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
             <div style={{ fontWeight: 900, fontSize: 18 }}>CliniFlow</div>
-            <div className="muted" style={{ fontSize: 13 }}>Painel</div>
+            <div className="muted" style={{ fontSize: 13 }}>
+              Painel
+            </div>
 
-            <nav style={{ marginLeft: 14, display: 'flex', gap: 8 }}>
-              <Link className="btn" href="/dashboard">Dashboard</Link>
-              <Link className="btn" href="/patients">Pacientes</Link>
-              <Link className="btn" href="/billing">Plano</Link>
+            <nav style={{ marginLeft: 10, display: 'flex', gap: 8 }}>
+              <Link className="btn" href="/dashboard">
+                Dashboard
+              </Link>
+              <Link className="btn" href="/patients">
+                Pacientes
+              </Link>
+              <Link className="btn" href="/billing">
+                Plano
+              </Link>
             </nav>
           </div>
 
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          {/* DIREITA */}
+          <div
+            style={{
+              display: 'flex',
+              gap: 10,
+              alignItems: 'center',
+              marginLeft: 'auto',
+            }}
+          >
             <ThemeToggle />
             <AvatarMenu avatarKey={user?.avatarKey ?? 'avatar_1'} />
           </div>
         </div>
       </header>
 
-      <main className="container">{children}</main>
+      {/* CONTEÚDO */}
+      <main className="container" style={{ flex: 1 }}>
+        {children}
+      </main>
     </div>
   )
 }
