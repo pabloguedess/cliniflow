@@ -3,11 +3,18 @@ import { cookies } from 'next/headers'
 import { verifySession } from '@/lib/session'
 import { prisma } from '@/lib/prisma'
 
+export const dynamic = 'force-dynamic'
+
+type Params = { id: string }
+
 export default async function PatientRecordsPage({
   params,
 }: {
-  params: { id: string }
+  params: Params | Promise<Params>
 }) {
+  const p = await Promise.resolve(params)
+  const patientId = p?.id
+
   const cookieStore = await cookies()
   const sessionCookie = cookieStore.get('cliniflow_session')?.value
   const session = verifySession(sessionCookie)
@@ -20,9 +27,22 @@ export default async function PatientRecordsPage({
     )
   }
 
-  const patientId = params.id
+  if (!patientId || patientId === 'undefined') {
+    return (
+      <div className="container" style={{ paddingTop: 30 }}>
+        <div className="card" style={{ padding: 18 }}>
+          <div style={{ fontWeight: 900, fontSize: 18 }}>Paciente inválido</div>
+          <div className="muted" style={{ marginTop: 6 }}>
+            O ID do paciente não foi recebido corretamente.
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Link className="btn" href="/patients">Voltar</Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
-  // ✅ SEMPRE busca pelo params.id + tenantId (nunca pega "primeiro paciente")
   const patient = await prisma.patient.findFirst({
     where: { id: patientId, tenantId: session.tenantId },
     select: { id: true, name: true },
@@ -44,18 +64,8 @@ export default async function PatientRecordsPage({
     )
   }
 
-  const records = await prisma.medicalRecord.findMany({
-    where: { tenantId: session.tenantId, patientId: patient.id },
-    orderBy: { createdAt: 'desc' },
-    select: {
-      id: true,
-      createdAt: true,
-      complaint: true,
-      diagnosis: true,
-      prescription: true,
-      observations: true,
-    },
-  })
+  // (por enquanto lista vazia - próximo passo criaremos registros)
+  const records: any[] = []
 
   return (
     <div style={{ paddingTop: 18 }}>
@@ -67,13 +77,12 @@ export default async function PatientRecordsPage({
           justifyContent: 'space-between',
           alignItems: 'center',
           gap: 12,
+          flexWrap: 'wrap',
         }}
       >
         <div>
-          <div style={{ fontWeight: 900, fontSize: 20 }}>Prontuário</div>
-          <div className="muted" style={{ marginTop: 4 }}>
-            Paciente: <b>{patient.name}</b>
-          </div>
+          <div style={{ fontWeight: 900, fontSize: 22 }}>Prontuário</div>
+          <div className="muted" style={{ marginTop: 6 }}>Paciente: <b>{patient.name}</b></div>
         </div>
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -88,28 +97,13 @@ export default async function PatientRecordsPage({
           (No próximo passo vamos criar “+ Novo registro” e “+ Anexar exame”.)
         </div>
 
-        {records.length === 0 ? (
-          <div style={{ marginTop: 12 }} className="muted">
-            Nenhum registro clínico ainda.
-          </div>
-        ) : (
-          <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
-            {records.map((r) => (
-              <div key={r.id} className="card" style={{ padding: 14 }}>
-                <div className="muted" style={{ fontSize: 12 }}>
-                  {new Date(r.createdAt).toLocaleString('pt-BR')}
-                </div>
-
-                <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
-                  <div><b>Queixa:</b> {r.complaint ?? '—'}</div>
-                  <div><b>Diagnóstico:</b> {r.diagnosis ?? '—'}</div>
-                  <div><b>Prescrição:</b> {r.prescription ?? '—'}</div>
-                  <div className="muted"><b>Obs:</b> {r.observations ?? '—'}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        <div style={{ marginTop: 12 }}>
+          {records.length === 0 ? (
+            <div className="muted">Nenhum registro clínico ainda.</div>
+          ) : (
+            <div>...</div>
+          )}
+        </div>
       </div>
     </div>
   )

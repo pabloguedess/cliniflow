@@ -3,7 +3,19 @@ import { cookies } from 'next/headers'
 import { verifySession } from '@/lib/session'
 import { prisma } from '@/lib/prisma'
 
-export default async function PatientDetailsPage({ params }: { params: { id: string } }) {
+export const dynamic = 'force-dynamic'
+
+type Params = { id: string }
+
+export default async function PatientDetailsPage({
+  params,
+}: {
+  params: Params | Promise<Params>
+}) {
+  // ✅ Next pode entregar params como Promise em alguns builds
+  const p = await Promise.resolve(params)
+  const patientId = p?.id
+
   const cookieStore = await cookies()
   const sessionCookie = cookieStore.get('cliniflow_session')?.value
   const session = verifySession(sessionCookie)
@@ -16,7 +28,21 @@ export default async function PatientDetailsPage({ params }: { params: { id: str
     )
   }
 
-  const patientId = params.id
+  if (!patientId || patientId === 'undefined') {
+    return (
+      <div className="container" style={{ paddingTop: 30 }}>
+        <div className="card" style={{ padding: 18 }}>
+          <div style={{ fontWeight: 900, fontSize: 18 }}>Paciente inválido</div>
+          <div className="muted" style={{ marginTop: 6 }}>
+            O ID do paciente não foi recebido corretamente.
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Link className="btn" href="/patients">Voltar</Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const patient = await prisma.patient.findFirst({
     where: { id: patientId, tenantId: session.tenantId },
