@@ -18,9 +18,7 @@ export default async function PatientDetailsPage({
   if (!session) {
     return (
       <div className="container">
-        <div className="card" style={{ padding: 18 }}>
-          Não autorizado
-        </div>
+        <div className="card" style={{ padding: 18 }}>Não autorizado</div>
       </div>
     )
   }
@@ -46,7 +44,6 @@ export default async function PatientDetailsPage({
     )
   }
 
-  // Carrega registros + exames do paciente certo (por patientId)
   const records = await prisma.medicalRecord.findMany({
     where: { tenantId: session.tenantId, patientId: patient.id },
     orderBy: { createdAt: 'desc' },
@@ -61,8 +58,6 @@ export default async function PatientDetailsPage({
     },
   })
 
-  // se você ainda não tem tabela de exams no prisma, deixe como []
-  // (quando você tiver, só trocar a query)
   const exams = await prisma.exam.findMany({
     where: { tenantId: session.tenantId, patientId: patient.id },
     orderBy: { createdAt: 'desc' },
@@ -74,12 +69,9 @@ export default async function PatientDetailsPage({
       url: true,
       contentType: true,
     },
-  }).catch(() => [])
+  })
 
-  const addressText =
-    patient.address
-      ? patient.address
-      : '—'
+  const addressText = patient.address ? patient.address : '—'
 
   return (
     <div className="grid" style={{ gap: 14 }}>
@@ -92,19 +84,12 @@ export default async function PatientDetailsPage({
 
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <Link className="btn" href="/patients">Voltar</Link>
-
-            <Link className="btn" href={`/patients/${patient.id}/edit`}>
-              Editar ficha
-            </Link>
-
-            <Link className="btn" href={`/appointments/new?patientId=${patient.id}`}>
-              Agendar
-            </Link>
+            <Link className="btn" href={`/patients/${patient.id}/edit`}>Editar ficha</Link>
+            <Link className="btn" href={`/appointments/new?patientId=${patient.id}`}>Agendar</Link>
           </div>
         </div>
       </div>
 
-      {/* Ficha */}
       <div className="card" style={{ padding: 18 }}>
         <div style={{ fontWeight: 900, fontSize: 16 }}>Ficha</div>
 
@@ -131,13 +116,10 @@ export default async function PatientDetailsPage({
 
         <div className="card" style={{ padding: 14, marginTop: 12, background: 'rgba(255,255,255,0.04)' }}>
           <div className="muted" style={{ fontSize: 12 }}>Observações</div>
-          <div style={{ marginTop: 8, whiteSpace: 'pre-wrap' }}>
-            {patient.notes || '—'}
-          </div>
+          <div style={{ marginTop: 8, whiteSpace: 'pre-wrap' }}>{patient.notes || '—'}</div>
         </div>
       </div>
 
-      {/* ✅ Registros + Anexos */}
       <RecordsAndExamsClient
         patientId={patient.id}
         initialRecords={records as any}

@@ -18,6 +18,7 @@ model Tenant {
   appointments   Appointment[]
   medicalRecords MedicalRecord[]
   subscriptions  Subscription[]
+  exams          Exam[]
 
   @@map("tenants")
 }
@@ -28,13 +29,8 @@ model User {
   email     String   @unique
   password  String
   role      String   @default("admin")
+  avatarKey String?  @default("avatar_1")
   createdAt DateTime @default(now())
-    avatarKey        String   @default("avatar_1")
-  pendingEmail     String?
-  emailCodeHash    String?
-  passCodeHash     String?
-  codeExpiresAt    DateTime?
-
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
@@ -60,6 +56,7 @@ model Patient {
   tenant       Tenant          @relation(fields: [tenantId], references: [id])
   appointments Appointment[]
   records      MedicalRecord[]
+  exams        Exam[]
 
   @@map("patients")
 }
@@ -148,4 +145,23 @@ model Payment {
   subscription Subscription @relation(fields: [subscriptionId], references: [id])
 
   @@map("payments")
+}
+
+/**
+ * ✅ NOVO: anexos/exames do paciente
+ */
+model Exam {
+  id          String   @id @default(uuid())
+  tenantId    String
+  patientId   String
+  filename    String
+  url         String
+  contentType String
+  createdAt   DateTime @default(now())
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@index([tenantId, patientId])
+  @@map("exams")
 }
