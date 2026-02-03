@@ -32,6 +32,16 @@ model User {
   avatarKey String?  @default("avatar_1")
   createdAt DateTime @default(now())
 
+  // ✅ troca de e-mail com código
+  pendingEmail  String?
+  emailCodeHash String?
+  codeExpiresAt DateTime?
+
+  // ✅ troca de senha com código
+  pendingPasswordHash String?
+  passwordCodeHash    String?
+  passwordCodeExpires DateTime?
+
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
   @@map("users")
@@ -147,9 +157,7 @@ model Payment {
   @@map("payments")
 }
 
-/**
- * ✅ NOVO: anexos/exames do paciente
- */
+// ✅ Anexos/Exames do paciente
 model Exam {
   id          String   @id @default(uuid())
   tenantId    String
