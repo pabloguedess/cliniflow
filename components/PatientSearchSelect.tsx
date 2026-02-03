@@ -1,77 +1,143 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { toast } from '@/components/Toast'
 
 type Patient = { id: string; name: string }
 
-export function PatientSearchSelect({
-  patients,
-  value,
-  onChange,
-  placeholder = 'Digite para buscar…',
-}: {
-  patients: Patient[]
-  value: string
-  onChange: (id: string) => void
-  placeholder?: string
-}) {
+export default function PatientSearchSelect() {
   const [q, setQ] = useState('')
-  const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase()
-    if (!s) return patients.slice(0, 8)
-    return patients.filter((p) => p.name.toLowerCase().includes(s)).slice(0, 8)
-  }, [q, patients])
+  const [items, setItems] = useState<Patient[]>([])
+  const [selected, setSelected] = useState<Patient | null>(null)
+  const [loading, setLoading] = useState(false)
 
-  const selected = patients.find((p) => p.id === value)
+  const showList = useMemo(() => q.trim().length >= 1 && !selected, [q, selected])
+
+  useEffect(() => {
+    let alive = true
+
+    async function run() {
+      const text = q.trim()
+      if (text.length < 1 || selected) {
+        setItems([])
+        return
+      }
+
+      setLoading(true)
+      try {
+        const res = await fetch(`/api/patients/search?q=${encodeURIComponent(text)}`, { cache: 'no-store' })
+        const data = await res.json().catch(() => null)
+
+        if (!res.ok) {
+          if (alive) setItems([])
+          return
+        }
+
+        if (alive) setItems(data?.items || [])
+      } catch (e) {
+        console.error(e)
+        if (alive) setItems([])
+      } finally {
+        if (alive) setLoading(false)
+      }
+    }
+
+    const t = window.setTimeout(run, 180)
+    return () => {
+      alive = false
+      window.clearTimeout(t)
+    }
+  }, [q, selected])
+
+  function choose(p: Patient) {
+    setSelected(p)
+    setQ(p.name)
+    setItems([])
+  }
+
+  function clear() {
+    setSelected(null)
+    setQ('')
+    setItems([])
+  }
 
   return (
     <div style={{ position: 'relative' }}>
+      {/* Campo visível */}
       <input
+        className="input"
         value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder={selected ? selected.name : placeholder}
-        style={{ paddingRight: 12 }}
+        placeholder="Digite para buscar..."
+        onChange={(e) => {
+          setQ(e.target.value)
+          if (selected) setSelected(null)
+        }}
       />
 
-      <div
-        className="card"
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          top: 52,
-          zIndex: 20,
-          overflow: 'hidden',
-          display: (q.trim().length > 0 || !value) ? 'block' : 'none',
-        }}
-      >
-        {filtered.length === 0 ? (
-          <div style={{ padding: 12 }} className="muted">Nenhum paciente encontrado.</div>
+      {/* hidden que vai para o form */}
+      <input type="hidden" name="patientId" value={selected?.id || ''} required />
+
+      {/* Ações */}
+      <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        {selected ? (
+          <div className="muted" style={{ fontSize: 12 }}>
+            Selecionado: <b>{selected.name}</b>
+          </div>
         ) : (
-          filtered.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              className="btn"
-              style={{
-                width: '100%',
-                justifyContent: 'space-between',
-                borderRadius: 0,
-                border: 'none',
-                borderBottom: '1px solid var(--border)',
-                background: 'transparent',
-              }}
-              onClick={() => {
-                onChange(p.id)
-                setQ('')
-              }}
-            >
-              <span style={{ fontWeight: 700 }}>{p.name}</span>
-              <span className="muted" style={{ fontSize: 12 }}>Selecionar</span>
-            </button>
-          ))
+          <div className="muted" style={{ fontSize: 12 }}>
+            {loading ? 'Buscando...' : 'Selecione um paciente da lista'}
+          </div>
         )}
+
+        {selected ? (
+          <button
+            type="button"
+            className="btn"
+            onClick={clear}
+            style={{ padding: '8px 10px' }}
+          >
+            Trocar
+          </button>
+        ) : null}
       </div>
+
+      {/* Lista sugestões */}
+      {showList ? (
+        <div
+          className="card"
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: 'calc(100% + 10px)',
+            padding: 8,
+            zIndex: 20,
+          }}
+        >
+          {items.length === 0 ? (
+            <div className="muted" style={{ padding: 10 }}>
+              Nenhum paciente encontrado.
+            </div>
+          ) : (
+            <div className="grid" style={{ gap: 8 }}>
+              {items.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className="btn"
+                  style={{ textAlign: 'left', justifyContent: 'flex-start' as any }}
+                  onClick={() => {
+                    choose(p)
+                    toast.info('Paciente selecionado')
+                  }}
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
     </div>
   )
 }

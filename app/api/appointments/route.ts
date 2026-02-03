@@ -6,40 +6,59 @@ import { prisma } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
-function toDateSafe(value: any) {
-  if (!value) return null
-  const d = new Date(value)
-  return isNaN(d.getTime()) ? null : d
-}
-
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
     const cookieStore = await cookies()
     const sessionCookie = cookieStore.get('cliniflow_session')?.value
     const session = verifySession(sessionCookie)
-
     if (!session) return NextResponse.json({ message: 'Não autorizado' }, { status: 401 })
 
+    const url = new URL(req.url)
+    const q = (url.searchParams.get('q') || '').trim()
+    const range = (url.searchParams.get('range') || '7d').trim()
+
+    const startOfToday = () => {
+      const d = new Date()
+      d.setHours(0, 0, 0, 0)
+      return d
+    }
+    const endOfToday = () => {
+      const d = new Date()
+      d.setHours(23, 59, 59, 999)
+      return d
+    }
+    const addDays = (days: number) => {
+      const d = new Date()
+      d.setDate(d.getDate() + days)
+      return d
+    }
+
+    let dateFilter: any = undefined
+    if (range === 'today') dateFilter = { gte: startOfToday(), lte: endOfToday() }
+    if (range === '7d') dateFilter = { gte: startOfToday(), lte: addDays(7) }
+
+    const where: any = { tenantId: session.tenantId }
+    if (dateFilter) where.date = dateFilter
+    if (q) where.patient = { name: { contains: q, mode: 'insensitive' } }
+
     const items = await prisma.appointment.findMany({
-      where: { tenantId: session.tenantId },
+      where,
       orderBy: { date: 'asc' },
       take: 200,
       select: {
         id: true,
         date: true,
-        type: true,
         status: true,
+        type: true,
         notes: true,
-        patientId: true,
-        patient: { select: { id: true, name: true, phone: true } },
-        createdAt: true,
+        patient: { select: { id: true, name: true } },
       },
     })
 
     return NextResponse.json({ items })
-  } catch (e: any) {
+  } catch (e) {
     console.error('GET /api/appointments ERROR:', e)
-    return NextResponse.json({ message: 'Erro ao listar agendamentos' }, { status: 500 })
+    return NextResponse.json({ message: 'Erro ao listar' }, { status: 500 })
   }
 }
 
@@ -48,43 +67,43 @@ export async function POST(req: NextRequest) {
     const cookieStore = await cookies()
     const sessionCookie = cookieStore.get('cliniflow_session')?.value
     const session = verifySession(sessionCookie)
-
     if (!session) return NextResponse.json({ message: 'Não autorizado' }, { status: 401 })
 
-    const body = await req.json()
-    const patientId = String(body.patientId || '')
-    const type = String(body.type || 'Consulta')
-    const notes = body.notes ? String(body.notes) : null
+    const form = await req.formData()
+    const patientId = String(form.get('patientId') || '').trim()
+    const dateStr = String(form.get('date') || '').trim()
+    const type = String(form.get('type') || '').trim()
+    const notes = String(form.get('notes') || '').trim()
 
-    // aceita date ISO ou string do input
-    const date = toDateSafe(body.date)
-    if (!patientId || !date) {
-      return NextResponse.json({ message: 'Dados inválidos' }, { status: 400 })
+    if (!patientId || !dateStr || !type) {
+      return NextResponse.json({ message: 'Campos obrigatórios faltando' }, { status: 400 })
     }
 
-    // garante que o paciente é do tenant
+    const date = new Date(dateStr)
+    if (isNaN(date.getTime())) {
+      return NextResponse.json({ message: 'Data inválida' }, { status: 400 })
+    }
+
     const patient = await prisma.patient.findFirst({
       where: { id: patientId, tenantId: session.tenantId, active: true },
       select: { id: true },
     })
-    if (!patient) {
-      return NextResponse.json({ message: 'Paciente inválido' }, { status: 400 })
-    }
+    if (!patient) return NextResponse.json({ message: 'Paciente inválido' }, { status: 404 })
 
-    const created = await prisma.appointment.create({
+    await prisma.appointment.create({
       data: {
         tenantId: session.tenantId,
         patientId,
         date,
         type,
+        notes: notes || null,
         status: 'scheduled',
-        notes,
       },
-      select: { id: true },
     })
 
-    return NextResponse.json({ ok: true, id: created.id })
-  } catch (e: any) {
+    // volta pra listagem
+    return NextResponse.redirect(new URL('/appointments', req.url))
+  } catch (e) {
     console.error('POST /api/appointments ERROR:', e)
     return NextResponse.json({ message: 'Erro ao criar agendamento' }, { status: 500 })
   }
