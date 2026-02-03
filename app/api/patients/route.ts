@@ -1,28 +1,32 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import { verifySession } from '@/lib/session'
 import { prisma } from '@/lib/prisma'
+import { verifySession } from '@/lib/session'
 
-export async function GET(req: Request) {
+export const dynamic = 'force-dynamic'
+
+function getSessionOrNull(sessionCookie?: string) {
+  try {
+    return verifySession(sessionCookie)
+  } catch {
+    return null
+  }
+}
+
+export async function GET() {
   const cookieStore = await cookies()
   const sessionCookie = cookieStore.get('cliniflow_session')?.value
-  const session = verifySession(sessionCookie)
+  const session = getSessionOrNull(sessionCookie)
 
   if (!session) {
     return NextResponse.json({ message: 'Não autorizado' }, { status: 401 })
   }
 
-  const { searchParams } = new URL(req.url)
-  const search = (searchParams.get('search') || '').trim()
-
-  const where: any = { tenantId: session.tenantId, active: true }
-
-  if (search.length >= 1) {
-    where.name = { contains: search, mode: 'insensitive' }
-  }
-
   const patients = await prisma.patient.findMany({
-    where,
+    where: {
+      tenantId: session.tenantId,
+      active: true,
+    },
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,
@@ -31,7 +35,6 @@ export async function GET(req: Request) {
       email: true,
       createdAt: true,
     },
-    take: 300,
   })
 
   return NextResponse.json({ patients })
@@ -40,7 +43,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const cookieStore = await cookies()
   const sessionCookie = cookieStore.get('cliniflow_session')?.value
-  const session = verifySession(sessionCookie)
+  const session = getSessionOrNull(sessionCookie)
 
   if (!session) {
     return NextResponse.json({ message: 'Não autorizado' }, { status: 401 })
@@ -48,26 +51,28 @@ export async function POST(req: Request) {
 
   const body = await req.json()
 
-  if (!body?.name || String(body.name).trim().length < 2) {
+  // Campos mínimos (o resto pode ser opcional)
+  const name = String(body?.name || '').trim()
+  if (!name) {
     return NextResponse.json({ message: 'Nome é obrigatório' }, { status: 400 })
   }
 
   const patient = await prisma.patient.create({
     data: {
       tenantId: session.tenantId,
-      name: String(body.name).trim(),
-      cpf: body.cpf ? String(body.cpf).trim() : null,
-      rg: body.rg ? String(body.rg).trim() : null,
-      birthDate: body.birthDate ? new Date(body.birthDate) : null,
-      gender: body.gender ? String(body.gender).trim() : null,
-      phone: body.phone ? String(body.phone).trim() : null,
-      email: body.email ? String(body.email).trim() : null,
-      address: body.address ? String(body.address).trim() : null,
-      notes: body.notes ? String(body.notes).trim() : null,
+      name,
+      cpf: body?.cpf || null,
+      rg: body?.rg || null,
+      birthDate: body?.birthDate ? new Date(body.birthDate) : null,
+      gender: body?.gender || null,
+      phone: body?.phone || null,
+      email: body?.email || null,
+      address: body?.address || null,
+      notes: body?.notes || null,
       active: true,
     },
-    select: { id: true, name: true },
+    select: { id: true },
   })
 
-  return NextResponse.json({ patient })
+  return NextResponse.json({ ok: true, id: patient.id })
 }
