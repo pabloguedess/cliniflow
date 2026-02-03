@@ -1,138 +1,148 @@
-'use client'
+import Link from 'next/link'
+import { cookies } from 'next/headers'
+import { verifySession } from '@/lib/session'
+import { prisma } from '@/lib/prisma'
+import RecordsAndExamsClient from '@/components/RecordsAndExamsClient'
 
-import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
-import { toast } from '@/components/Toast'
+export default async function PatientDetailsPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
+  const { id } = await params
 
-type Patient = {
-  id: string
-  name: string
-  phone: string | null
-  email: string | null
-  cpf: string | null
-  rg: string | null
-  birthDate: string | null
-  gender: string | null
-  address: string | null
-  notes: string | null
-}
+  const cookieStore = await cookies()
+  const sessionCookie = cookieStore.get('cliniflow_session')?.value
+  const session = verifySession(sessionCookie)
 
-export default function PatientDetailsPage() {
-  const params = useParams<{ id: string }>()
-  const id = params?.id
-  const router = useRouter()
-
-  const [loading, setLoading] = useState(true)
-  const [patient, setPatient] = useState<Patient | null>(null)
-
-  async function load() {
-    setLoading(true)
-    try {
-      const res = await fetch(`/api/patients/${id}`, { cache: 'no-store' })
-      if (!res.ok) throw new Error('not ok')
-      const data = await res.json()
-      setPatient(data.patient)
-    } catch {
-      setPatient(null)
-      toast.error('Erro ao carregar', 'Não foi possível carregar o paciente.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    if (id) load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id])
-
-  async function onDelete() {
-    if (!patient) return
-    const ok = confirm(`Tem certeza que deseja excluir o paciente "${patient.name}"?`)
-    if (!ok) return
-
-    try {
-      const res = await fetch(`/api/patients/${patient.id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('delete failed')
-      toast.success('Excluído', 'Paciente removido com sucesso.')
-      router.push('/patients')
-      router.refresh()
-    } catch {
-      toast.error('Erro', 'Não foi possível excluir o paciente.')
-    }
-  }
-
-  if (loading) {
+  if (!session) {
     return (
-      <div className="card" style={{ padding: 18 }}>
-        <div style={{ fontWeight: 900, fontSize: 18 }}>Carregando...</div>
+      <div className="container">
+        <div className="card" style={{ padding: 18 }}>
+          Não autorizado
+        </div>
       </div>
     )
   }
+
+  const patient = await prisma.patient.findFirst({
+    where: { id, tenantId: session.tenantId },
+  })
 
   if (!patient) {
     return (
-      <div className="card" style={{ padding: 18 }}>
-        <div style={{ fontWeight: 900, fontSize: 18 }}>Paciente não encontrado</div>
-        <div className="muted" style={{ marginTop: 6 }}>
-          Volte para a lista e tente abrir novamente.
-        </div>
-        <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-          <button className="btn" onClick={() => router.push('/patients')}>Voltar para pacientes</button>
-          <button className="btn" onClick={() => load()}>Recarregar</button>
+      <div className="container">
+        <div className="card" style={{ padding: 18 }}>
+          <div style={{ fontWeight: 900, fontSize: 18 }}>Paciente não encontrado</div>
+          <div className="muted" style={{ marginTop: 6 }}>
+            Volte para a lista e tente abrir novamente.
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+            <Link className="btn" href="/patients">Voltar para pacientes</Link>
+            <a className="btn" href={`/patients/${id}`}>Recarregar</a>
+          </div>
         </div>
       </div>
     )
   }
 
+  // Carrega registros + exames do paciente certo (por patientId)
+  const records = await prisma.medicalRecord.findMany({
+    where: { tenantId: session.tenantId, patientId: patient.id },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+    select: {
+      id: true,
+      createdAt: true,
+      complaint: true,
+      diagnosis: true,
+      prescription: true,
+      observations: true,
+    },
+  })
+
+  // se você ainda não tem tabela de exams no prisma, deixe como []
+  // (quando você tiver, só trocar a query)
+  const exams = await prisma.exam.findMany({
+    where: { tenantId: session.tenantId, patientId: patient.id },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+    select: {
+      id: true,
+      createdAt: true,
+      filename: true,
+      url: true,
+      contentType: true,
+    },
+  }).catch(() => [])
+
+  const addressText =
+    patient.address
+      ? patient.address
+      : '—'
+
   return (
     <div className="grid" style={{ gap: 14 }}>
-      <div className="card" style={{ padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <div style={{ fontWeight: 900, fontSize: 22 }}>{patient.name}</div>
-          <div className="muted" style={{ marginTop: 4 }}>ID: {patient.id}</div>
-        </div>
-
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn" onClick={() => router.push('/patients')}>Voltar</button>
-          <button className="btn" onClick={() => router.push(`/appointments/new?patientId=${patient.id}`)}>Agendar</button>
-          <button className="btn" style={{ borderColor: 'rgba(255,90,90,.35)' }} onClick={onDelete}>
-            Excluir paciente
-          </button>
-        </div>
-      </div>
-
-      <div className="card" style={{ padding: 16 }}>
-        <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 10 }}>Ficha</div>
-
-        <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div className="card" style={{ padding: 14, boxShadow: 'none' }}>
-            <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Contato</div>
-            <div><b>Telefone:</b> {patient.phone || '—'}</div>
-            <div><b>Email:</b> {patient.email || '—'}</div>
-            <div><b>Endereço:</b> {patient.address || '—'}</div>
+      <div className="card" style={{ padding: 18 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ fontWeight: 900, fontSize: 22 }}>{patient.name}</div>
+            <div className="muted" style={{ marginTop: 6 }}>ID: {patient.id}</div>
           </div>
 
-          <div className="card" style={{ padding: 14, boxShadow: 'none' }}>
-            <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Documentos</div>
-            <div><b>CPF:</b> {patient.cpf || '—'}</div>
-            <div><b>RG:</b> {patient.rg || '—'}</div>
-            <div><b>Nascimento:</b> {patient.birthDate ? new Date(patient.birthDate).toLocaleDateString() : '—'}</div>
-            <div><b>Gênero:</b> {patient.gender || '—'}</div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <Link className="btn" href="/patients">Voltar</Link>
+
+            <Link className="btn" href={`/patients/${patient.id}/edit`}>
+              Editar ficha
+            </Link>
+
+            <Link className="btn" href={`/appointments/new?patientId=${patient.id}`}>
+              Agendar
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* Ficha */}
+      <div className="card" style={{ padding: 18 }}>
+        <div style={{ fontWeight: 900, fontSize: 16 }}>Ficha</div>
+
+        <div className="grid" style={{ marginTop: 12, gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="card" style={{ padding: 14, background: 'rgba(255,255,255,0.04)' }}>
+            <div className="muted" style={{ fontSize: 12 }}>Contato</div>
+            <div style={{ marginTop: 8, lineHeight: 1.5 }}>
+              <div><b>Telefone:</b> {patient.phone || '—'}</div>
+              <div><b>Email:</b> {patient.email || '—'}</div>
+              <div><b>Endereço:</b> {addressText}</div>
+            </div>
+          </div>
+
+          <div className="card" style={{ padding: 14, background: 'rgba(255,255,255,0.04)' }}>
+            <div className="muted" style={{ fontSize: 12 }}>Documentos</div>
+            <div style={{ marginTop: 8, lineHeight: 1.5 }}>
+              <div><b>CPF:</b> {patient.cpf || '—'}</div>
+              <div><b>RG:</b> {patient.rg || '—'}</div>
+              <div><b>Nascimento:</b> {patient.birthDate ? new Date(patient.birthDate).toLocaleDateString('pt-BR') : '—'}</div>
+              <div><b>Gênero:</b> {patient.gender || '—'}</div>
+            </div>
           </div>
         </div>
 
-        <div className="card" style={{ padding: 14, boxShadow: 'none', marginTop: 12 }}>
-          <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Observações</div>
-          <div>{patient.notes || '—'}</div>
+        <div className="card" style={{ padding: 14, marginTop: 12, background: 'rgba(255,255,255,0.04)' }}>
+          <div className="muted" style={{ fontSize: 12 }}>Observações</div>
+          <div style={{ marginTop: 8, whiteSpace: 'pre-wrap' }}>
+            {patient.notes || '—'}
+          </div>
         </div>
       </div>
 
-      <div className="card" style={{ padding: 16 }}>
-        <div style={{ fontWeight: 900, fontSize: 16 }}>Registros e anexos</div>
-        <div className="muted" style={{ marginTop: 6 }}>
-          (Aqui ficam os registros clínicos e anexos do paciente. Próximo passo: + Novo registro e + Anexar exame.)
-        </div>
-      </div>
+      {/* ✅ Registros + Anexos */}
+      <RecordsAndExamsClient
+        patientId={patient.id}
+        initialRecords={records as any}
+        initialExams={exams as any}
+      />
     </div>
   )
 }
