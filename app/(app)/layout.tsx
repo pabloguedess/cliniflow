@@ -4,7 +4,6 @@ import { AvatarMenu } from '@/components/AvatarMenu'
 import { cookies } from 'next/headers'
 import { verifySession } from '@/lib/session'
 import { prisma } from '@/lib/prisma'
-import { ToastProvider } from '@/components/Toast'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies()
@@ -21,39 +20,37 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   })
 
   return (
-    <ToastProvider>
-      <div style={{ minHeight: '100vh' }}>
-        <header style={{ position: 'sticky', top: 0, zIndex: 5, padding: 16 }}>
-          <div
-            className="card"
-            style={{
-              padding: 12,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
-          >
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <div style={{ fontWeight: 900, fontSize: 18 }}>CliniFlow</div>
-              <div className="muted" style={{ fontSize: 13 }}>Painel</div>
+    <div style={{ minHeight: '100vh' }}>
+      <header style={{ position: 'sticky', top: 0, zIndex: 5, padding: 16 }}>
+        <div
+          className="card"
+          style={{
+            padding: 12,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div style={{ fontWeight: 900, fontSize: 18 }}>CliniFlow</div>
+            <div className="muted" style={{ fontSize: 13 }}>Painel</div>
 
-              <nav style={{ marginLeft: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <Link className="btn" href="/dashboard">Dashboard</Link>
-                <Link className="btn" href="/patients">Pacientes</Link>
-                <Link className="btn" href="/appointments">Agendamentos</Link>
-                <Link className="btn" href="/billing">Plano</Link>
-              </nav>
-            </div>
-
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <ThemeToggle />
-              <AvatarMenu avatarKey={user?.avatarKey ?? 'avatar_1'} />
-            </div>
+            <nav style={{ marginLeft: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Link className="btn" href="/dashboard">Dashboard</Link>
+              <Link className="btn" href="/patients">Pacientes</Link>
+              <Link className="btn" href="/appointments">Agendamentos</Link>
+              <Link className="btn" href="/billing">Plano</Link>
+            </nav>
           </div>
-        </header>
 
-        <main className="container">{children}</main>
-      </div>
-    </ToastProvider>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <ThemeToggle />
+            <AvatarMenu avatarKey={user?.avatarKey ?? 'avatar_1'} />
+          </div>
+        </div>
+      </header>
+
+      <main className="container">{children}</main>
+    </div>
   )
 }

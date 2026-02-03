@@ -1,61 +1,102 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 
-type ToastItem = { id: string; title: string; description?: string; variant?: 'success' | 'error' | 'info' }
+type ToastKind = 'success' | 'error' | 'info'
 
-const ToastCtx = React.createContext<{
-  push: (t: Omit<ToastItem, 'id'>) => void
-} | null>(null)
-
-export function useToast() {
-  const ctx = React.useContext(ToastCtx)
-  if (!ctx) throw new Error('useToast must be used inside <ToastProvider />')
-  return ctx
+type ToastItem = {
+  id: string
+  kind: ToastKind
+  title: string
+  message?: string
+  createdAt: number
+  ttl: number
 }
 
-export function ToastProvider({ children }: { children: React.ReactNode }) {
-  const [items, setItems] = React.useState<ToastItem[]>([])
+type Listener = (items: ToastItem[]) => void
 
-  const push = React.useCallback((t: Omit<ToastItem, 'id'>) => {
-    const id = crypto.randomUUID()
-    const item: ToastItem = { id, variant: 'info', ...t }
-    setItems((prev) => [item, ...prev].slice(0, 4))
-    setTimeout(() => {
-      setItems((prev) => prev.filter((x) => x.id !== id))
-    }, 3800)
+let items: ToastItem[] = []
+let listeners: Listener[] = []
+
+function emit() {
+  for (const l of listeners) l(items)
+}
+
+function uid() {
+  return Math.random().toString(16).slice(2) + Date.now().toString(16)
+}
+
+function push(kind: ToastKind, title: string, message?: string, ttl = 3200) {
+  const id = uid()
+  const t: ToastItem = { id, kind, title, message, createdAt: Date.now(), ttl }
+  items = [t, ...items].slice(0, 5)
+  emit()
+
+  window.setTimeout(() => {
+    items = items.filter((x) => x.id !== id)
+    emit()
+  }, ttl)
+
+  return id
+}
+
+function remove(id: string) {
+  items = items.filter((x) => x.id !== id)
+  emit()
+}
+
+export const toast = {
+  success: (title: string, message?: string) => push('success', title, message),
+  error: (title: string, message?: string) => push('error', title, message, 4200),
+  info: (title: string, message?: string) => push('info', title, message),
+  dismiss: (id: string) => remove(id),
+  dismissAll: () => {
+    items = []
+    emit()
+  },
+}
+
+export function ToastViewport() {
+  const [state, setState] = useState<ToastItem[]>(items)
+
+  useEffect(() => {
+    const listener: Listener = (next) => setState(next)
+    listeners.push(listener)
+    // garante sync imediata
+    setState(items)
+
+    return () => {
+      listeners = listeners.filter((l) => l !== listener)
+    }
   }, [])
 
-  return (
-    <ToastCtx.Provider value={{ push }}>
-      {children}
+  const rendered = useMemo(() => state, [state])
 
-      <div
-        style={{
-          position: 'fixed',
-          right: 16,
-          bottom: 16,
-          zIndex: 9999,
-          display: 'grid',
-          gap: 10,
-          width: 'min(420px, calc(100vw - 32px))',
-        }}
-      >
-        {items.map((t) => (
-          <div key={t.id} className="card" style={{ padding: 14, border: '1px solid rgba(255,255,255,.10)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-              <div style={{ fontWeight: 900 }}>
-                {t.variant === 'success' ? '✅ ' : t.variant === 'error' ? '⚠️ ' : 'ℹ️ '}
-                {t.title}
-              </div>
-              <button className="btn" type="button" onClick={() => setItems((p) => p.filter((x) => x.id !== t.id))}>
-                Fechar
-              </button>
-            </div>
-            {t.description ? <div className="muted" style={{ marginTop: 8 }}>{t.description}</div> : null}
+  if (rendered.length === 0) return null
+
+  return (
+    <div className="toast-viewport" aria-live="polite" aria-relevant="additions removals">
+      {rendered.map((t) => (
+        <div
+          key={t.id}
+          className={[
+            'toast',
+            t.kind === 'success' ? 'toast-success' : '',
+            t.kind === 'error' ? 'toast-error' : '',
+            t.kind === 'info' ? 'toast-info' : '',
+          ].join(' ')}
+          role="status"
+        >
+          <div className="toast-dot" />
+          <div className="toast-body">
+            <div className="toast-title">{t.title}</div>
+            {t.message ? <div className="toast-msg">{t.message}</div> : null}
           </div>
-        ))}
-      </div>
-    </ToastCtx.Provider>
+          <button className="toast-x" onClick={() => remove(t.id)} aria-label="Fechar">
+            ×
+          </button>
+        </div>
+      ))}
+    </div>
   )
 }
