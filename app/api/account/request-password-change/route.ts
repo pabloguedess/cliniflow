@@ -6,27 +6,40 @@ import { generateCode, hashCode } from '@/lib/codes'
 import { sendCodeEmail } from '@/lib/email'
 
 export async function POST() {
-  const cookieStore = await cookies()
-  const session = verifySession(cookieStore.get('cliniflow_session')?.value)
-  if (!session) return NextResponse.json({ message: 'Não autorizado' }, { status: 401 })
+  try {
+    const cookieStore = await cookies()
+    const sessionCookie = cookieStore.get('cliniflow_session')?.value
+    const session = verifySession(sessionCookie)
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.userId },
-    select: { email: true },
-  })
-  if (!user) return NextResponse.json({ message: 'Usuário não encontrado' }, { status: 404 })
+    if (!session) {
+      return NextResponse.json({ message: 'Não autorizado' }, { status: 401 })
+    }
 
-  const code = generateCode()
+    const user = await prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { email: true },
+    })
 
-  await prisma.user.update({
-    where: { id: session.userId },
-    data: {
-      passCodeHash: await hashCode(code),
-      codeExpiresAt: new Date(Date.now() + 15 * 60 * 1000),
-    },
-  })
+    if (!user?.email) {
+      return NextResponse.json({ message: 'Usuário sem email' }, { status: 400 })
+    }
 
-  await sendCodeEmail(user.email, code, 'Código para trocar sua senha')
+    const code = generateCode()
 
-  return NextResponse.json({ ok: true })
+    await prisma.user.update({
+      where: { id: session.userId },
+      data: {
+        passwordCodeHash: await hashCode(code),
+        codeExpiresAt: new Date(Date.now() + 15 * 60 * 1000),
+      },
+    })
+
+    // ✅ assinatura de 3 args (to, subject, code)
+    await sendCodeEmail(user.email, 'Código para alterar senha', code)
+
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    console.error(error)
+    return NextResponse.json({ message: 'Erro interno' }, { status: 500 })
+  }
 }

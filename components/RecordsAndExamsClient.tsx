@@ -1,11 +1,11 @@
 'use client'
 
-import React from 'react'
-import { useToast } from '@/components/toast/ToastProvider'
+import React, { useMemo, useState } from 'react'
+import { toast } from '@/components/Toast'
 
 type RecordItem = {
   id: string
-  createdAt: string
+  createdAt: string | Date
   complaint?: string | null
   diagnosis?: string | null
   prescription?: string | null
@@ -14,257 +14,284 @@ type RecordItem = {
 
 type ExamItem = {
   id: string
-  createdAt: string
+  createdAt: string | Date
   filename: string
-  url: string
+  url: string | null
   contentType: string
+  path?: string
 }
 
-type Props = {
+function fmtDate(v: string | Date) {
+  const d = typeof v === 'string' ? new Date(v) : v
+  return d.toLocaleString('pt-BR')
+}
+
+export default function RecordsAndExamsClient({
+  patientId,
+  initialRecords,
+  initialExams,
+}: {
   patientId: string
   initialRecords: RecordItem[]
   initialExams: ExamItem[]
-}
-
-export default function RecordsAndExamsClient({ patientId, initialRecords, initialExams }: Props) {
-  const toastApi = useToast()
-  const [records, setRecords] = React.useState<RecordItem[]>(initialRecords)
-  const [exams, setExams] = React.useState<ExamItem[]>(initialExams)
-  const [loading, setLoading] = React.useState(false)
+}) {
+  const [tab, setTab] = useState<'records' | 'exams'>('records')
+  const [records, setRecords] = useState<RecordItem[]>(initialRecords ?? [])
+  const [exams, setExams] = useState<ExamItem[]>(initialExams ?? [])
 
   // novo registro
-  const [complaint, setComplaint] = React.useState('')
-  const [diagnosis, setDiagnosis] = React.useState('')
-  const [prescription, setPrescription] = React.useState('')
-  const [observations, setObservations] = React.useState('')
+  const [openRecord, setOpenRecord] = useState(false)
+  const [complaint, setComplaint] = useState('')
+  const [diagnosis, setDiagnosis] = useState('')
+  const [prescription, setPrescription] = useState('')
+  const [observations, setObservations] = useState('')
+  const [savingRecord, setSavingRecord] = useState(false)
 
-  async function refresh() {
-    setLoading(true)
-    try {
-      const res = await fetch(`/api/patients/${patientId}`, { cache: 'no-store' })
-      if (!res.ok) throw new Error('Falha ao atualizar dados do paciente')
-      const data = await res.json()
-      setRecords(data.records ?? [])
-      setExams(data.exams ?? [])
-    } catch (e: any) {
-      toastApi.toast({
-        type: 'error',
-        title: 'Erro',
-        message: e?.message || 'Não foi possível atualizar.',
-      })
-    } finally {
-      setLoading(false)
-    }
+  // upload
+  const [uploading, setUploading] = useState(false)
+
+  const totalRecords = useMemo(() => records.length, [records])
+  const totalExams = useMemo(() => exams.length, [exams])
+
+  async function refreshRecords() {
+    const res = await fetch(`/api/patients/${patientId}/records`, { cache: 'no-store' })
+    const data = await res.json().catch(() => null)
+    if (!res.ok) return
+    setRecords(data?.records ?? [])
   }
 
-  async function addRecord() {
-    if (!complaint && !diagnosis && !prescription && !observations) {
-      toastApi.toast({
-        type: 'info',
-        title: 'Nada para salvar',
-        message: 'Preencha ao menos um campo do registro clínico.',
-      })
-      return
-    }
+  async function refreshExams() {
+    const res = await fetch(`/api/patients/${patientId}/exams`, { cache: 'no-store' })
+    const data = await res.json().catch(() => null)
+    if (!res.ok) return
+    setExams(data?.exams ?? [])
+  }
 
-    setLoading(true)
+  async function createRecord() {
+    setSavingRecord(true)
     try {
       const res = await fetch(`/api/patients/${patientId}/records`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ complaint, diagnosis, prescription, observations }),
+        body: JSON.stringify({
+          complaint,
+          diagnosis,
+          prescription,
+          observations,
+        }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.message || 'Erro ao criar registro')
 
-      toastApi.toast({ type: 'success', title: 'Registro criado', message: 'Salvo com sucesso.' })
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        toast.error(data?.message ?? 'Erro ao criar registro')
+        return
+      }
+
+      toast.success('Registro adicionado com sucesso')
       setComplaint('')
       setDiagnosis('')
       setPrescription('')
       setObservations('')
-      await refresh()
-    } catch (e: any) {
-      toastApi.toast({ type: 'error', title: 'Erro', message: e?.message || 'Não foi possível criar.' })
+      setOpenRecord(false)
+      await refreshRecords()
+      setTab('records')
+    } catch (e) {
+      console.error(e)
+      toast.error('Falha ao criar registro')
     } finally {
-      setLoading(false)
+      setSavingRecord(false)
     }
   }
 
   async function uploadExam(file: File) {
-    setLoading(true)
+    setUploading(true)
     try {
-      const form = new FormData()
-      form.append('file', file)
+      const fd = new FormData()
+      fd.append('file', file)
 
       const res = await fetch(`/api/patients/${patientId}/exams`, {
         method: 'POST',
-        body: form,
+        body: fd,
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.message || 'Erro ao enviar exame')
+      const data = await res.json().catch(() => null)
 
-      toastApi.toast({ type: 'success', title: 'Arquivo enviado', message: 'Exame anexado com sucesso.' })
-      await refresh()
-    } catch (e: any) {
-      toastApi.toast({ type: 'error', title: 'Erro', message: e?.message || 'Não foi possível anexar.' })
+      if (!res.ok) {
+        toast.error(data?.message ?? 'Erro ao anexar')
+        return
+      }
+
+      toast.success('Arquivo anexado com sucesso')
+      await refreshExams()
+      setTab('exams')
+    } catch (e) {
+      console.error(e)
+      toast.error('Falha no upload')
     } finally {
-      setLoading(false)
+      setUploading(false)
     }
   }
 
+  function onPickFile(ev: React.ChangeEvent<HTMLInputElement>) {
+    const file = ev.target.files?.[0]
+    if (!file) return
+
+    const allowed = [
+      'application/pdf',
+      'image/png',
+      'image/jpeg',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain',
+    ]
+
+    // OBS: .doc (msword) hoje retorna erro no backend, mas deixo aqui pra mostrar msg amigável
+    if (!allowed.includes(file.type)) {
+      toast.error('Tipo de arquivo não suportado')
+      ev.target.value = ''
+      return
+    }
+
+    uploadExam(file)
+    ev.target.value = ''
+  }
+
   return (
-    <div className="grid" style={{ gap: 14 }}>
-      {/* Registros */}
-      <div className="card" style={{ padding: 18 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <div>
-            <div style={{ fontWeight: 900, fontSize: 16 }}>Registros clínicos</div>
-            <div className="muted" style={{ marginTop: 4 }}>
-              Crie registros do atendimento (queixa, diagnóstico, prescrição e observações).
-            </div>
+    <div className="card" style={{ padding: 18 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontWeight: 900, fontSize: 16 }}>Registros e anexos</div>
+          <div className="muted" style={{ marginTop: 4, fontSize: 13 }}>
+            {totalRecords} registros • {totalExams} anexos
           </div>
+        </div>
 
-          <button className="btn" onClick={refresh} disabled={loading}>
-            {loading ? 'Atualizando…' : 'Atualizar'}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button className="btn" onClick={() => setTab('records')} aria-pressed={tab === 'records'}>
+            Registros
           </button>
-        </div>
+          <button className="btn" onClick={() => setTab('exams')} aria-pressed={tab === 'exams'}>
+            Anexos
+          </button>
 
-        <div className="grid" style={{ marginTop: 14 }}>
-          <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Queixa principal</div>
-              <textarea
-                className="input"
-                style={{ minHeight: 90, resize: 'vertical' }}
-                value={complaint}
-                onChange={(e) => setComplaint(e.target.value)}
-                placeholder="Ex.: dor, febre, retorno, etc."
-              />
-            </div>
+          <button className="btn btnPrimary" onClick={() => setOpenRecord(true)}>
+            + Novo registro
+          </button>
 
-            <div>
-              <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Diagnóstico</div>
-              <textarea
-                className="input"
-                style={{ minHeight: 90, resize: 'vertical' }}
-                value={diagnosis}
-                onChange={(e) => setDiagnosis(e.target.value)}
-                placeholder="Ex.: suspeita de..., CID, etc."
-              />
-            </div>
-          </div>
-
-          <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Prescrição</div>
-              <textarea
-                className="input"
-                style={{ minHeight: 90, resize: 'vertical' }}
-                value={prescription}
-                onChange={(e) => setPrescription(e.target.value)}
-                placeholder="Ex.: medicamentos, posologia, etc."
-              />
-            </div>
-
-            <div>
-              <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Observações</div>
-              <textarea
-                className="input"
-                style={{ minHeight: 90, resize: 'vertical' }}
-                value={observations}
-                onChange={(e) => setObservations(e.target.value)}
-                placeholder="Ex.: orientações, retorno, anotações..."
-              />
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-            <button className="btn btnPrimary" onClick={addRecord} disabled={loading}>
-              + Novo registro
-            </button>
-          </div>
-
-          <div style={{ marginTop: 6 }}>
-            {records.length === 0 ? (
-              <div className="muted">Nenhum registro clínico ainda.</div>
-            ) : (
-              <div className="grid" style={{ gap: 10 }}>
-                {records.map((r) => (
-                  <div key={r.id} className="card" style={{ padding: 14, background: 'rgba(255,255,255,0.04)' }}>
-                    <div style={{ fontWeight: 800 }}>Registro</div>
-                    <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                      {new Date(r.createdAt).toLocaleString('pt-BR')}
-                    </div>
-
-                    <div style={{ marginTop: 10, lineHeight: 1.4 }}>
-                      {r.complaint ? <div><b>Queixa:</b> {r.complaint}</div> : null}
-                      {r.diagnosis ? <div><b>Diagnóstico:</b> {r.diagnosis}</div> : null}
-                      {r.prescription ? <div><b>Prescrição:</b> {r.prescription}</div> : null}
-                      {r.observations ? <div><b>Obs.:</b> {r.observations}</div> : null}
-
-                      {!r.complaint && !r.diagnosis && !r.prescription && !r.observations ? (
-                        <div className="muted">Sem conteúdo.</div>
-                      ) : null}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Exames */}
-      <div className="card" style={{ padding: 18 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <div>
-            <div style={{ fontWeight: 900, fontSize: 16 }}>Exames e anexos</div>
-            <div className="muted" style={{ marginTop: 4 }}>
-              Envie PDF/JPG/PNG (e depois vamos transformar Word/TXT → PDF automaticamente).
-            </div>
-          </div>
-
-          <label className="btn" style={{ cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}>
-            + Anexar exame
+          <label
+            className="btn"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              cursor: uploading ? 'not-allowed' : 'pointer',
+              opacity: uploading ? 0.7 : 1,
+            }}
+          >
+            {uploading ? 'Enviando...' : '+ Anexar exame'}
             <input
               type="file"
-              hidden
-              disabled={loading}
-              accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.txt"
-              onChange={(e) => {
-                const f = e.target.files?.[0]
-                if (!f) return
-                uploadExam(f)
-                e.currentTarget.value = ''
-              }}
+              accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.txt,application/pdf,image/png,image/jpeg,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+              onChange={onPickFile}
+              disabled={uploading}
+              style={{ display: 'none' }}
             />
           </label>
         </div>
+      </div>
 
-        <div style={{ marginTop: 14 }}>
-          {exams.length === 0 ? (
-            <div className="muted">Nenhum exame anexado ainda.</div>
-          ) : (
-            <div className="grid" style={{ gap: 10 }}>
-              {exams.map((ex) => (
-                <div key={ex.id} className="card" style={{ padding: 14, background: 'rgba(255,255,255,0.04)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontWeight: 800 }}>{ex.filename}</div>
-                      <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                        {new Date(ex.createdAt).toLocaleString('pt-BR')}
-                      </div>
-                    </div>
+      {/* Modal Novo Registro */}
+      {openRecord ? (
+        <div style={{ marginTop: 14 }} className="card">
+          <div style={{ padding: 14 }}>
+            <div style={{ fontWeight: 900 }}>Novo registro</div>
+            <div className="muted" style={{ marginTop: 4, fontSize: 13 }}>
+              Preencha o que for necessário (pode deixar campos vazios).
+            </div>
 
-                    <a className="btn" href={ex.url} target="_blank" rel="noreferrer">
-                      Abrir
-                    </a>
+            <div className="grid" style={{ marginTop: 12 }}>
+              <input className="input" placeholder="Queixa principal" value={complaint} onChange={(e) => setComplaint(e.target.value)} />
+              <input className="input" placeholder="Diagnóstico" value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} />
+              <input className="input" placeholder="Prescrição" value={prescription} onChange={(e) => setPrescription(e.target.value)} />
+              <textarea
+                className="input"
+                placeholder="Observações"
+                value={observations}
+                onChange={(e) => setObservations(e.target.value)}
+                style={{ minHeight: 90, resize: 'vertical' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 12, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button className="btn" onClick={() => setOpenRecord(false)} disabled={savingRecord}>
+                Cancelar
+              </button>
+              <button className="btn btnPrimary" onClick={createRecord} disabled={savingRecord}>
+                {savingRecord ? 'Salvando...' : 'Salvar registro'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Conteúdo */}
+      <div style={{ marginTop: 14 }}>
+        {tab === 'records' ? (
+          <div className="grid" style={{ gap: 10 }}>
+            {records.length === 0 ? (
+              <div className="muted">Nenhum registro ainda.</div>
+            ) : (
+              records.map((r) => (
+                <div key={r.id} className="card" style={{ padding: 14, background: 'rgba(255,255,255,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                    <div style={{ fontWeight: 900 }}>Registro</div>
+                    <div className="muted" style={{ fontSize: 12 }}>{fmtDate(r.createdAt)}</div>
+                  </div>
+
+                  <div style={{ marginTop: 10, lineHeight: 1.5 }}>
+                    {r.complaint ? <div><b>Queixa:</b> {r.complaint}</div> : null}
+                    {r.diagnosis ? <div><b>Diagnóstico:</b> {r.diagnosis}</div> : null}
+                    {r.prescription ? <div><b>Prescrição:</b> {r.prescription}</div> : null}
+                    {r.observations ? <div><b>Obs:</b> {r.observations}</div> : null}
+
+                    {!r.complaint && !r.diagnosis && !r.prescription && !r.observations ? (
+                      <div className="muted">Registro vazio.</div>
+                    ) : null}
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              ))
+            )}
+          </div>
+        ) : (
+          <div className="grid" style={{ gap: 10 }}>
+            {exams.length === 0 ? (
+              <div className="muted">Nenhum anexo ainda.</div>
+            ) : (
+              exams.map((x) => (
+                <div key={x.id} className="card" style={{ padding: 14, background: 'rgba(255,255,255,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                    <div style={{ fontWeight: 900 }}>{x.filename}</div>
+                    <div className="muted" style={{ fontSize: 12 }}>{fmtDate(x.createdAt)}</div>
+                  </div>
+
+                  <div style={{ marginTop: 8, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {x.url ? (
+                      <a className="btn" href={x.url} target="_blank" rel="noreferrer">
+                        Abrir
+                      </a>
+                    ) : (
+                      <span className="muted">Gerando link...</span>
+                    )}
+
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      {x.contentType}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
